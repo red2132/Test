@@ -1,1 +1,17 @@
-https://www.figma.com/design/V3buxhL6RXF3ROnZttl4gH/%EC%95%84%EA%BB%B4%EB%93%9C%EB%A6%BC-%EB%B0%B0%EB%84%88%EA%B0%80%EC%9D%B4%EB%93%9C%EC%95%88%EB%82%B4?node-id=84-79&t=mKzPzo07hswpk7CJ-1
+            Mono<String> monoRawJson = mobinsWebClient.post()
+                    .uri(petApiPath)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(Mono.just(ReqCommonBody.of(reqCommonStat.getBasDt())), ReqCommonBody.class)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, response -> {
+                        return response.bodyToMono(String.class).map(RuntimeException::new);
+                    })
+                    .onStatus(HttpStatusCode::is5xxServerError, response -> {
+                        return response.bodyToMono(String.class).map(RuntimeException::new);
+                    })
+                    .onStatus(HttpStatusCode::isError, response -> {
+                        return response.bodyToMono(String.class).map(RuntimeException::new);
+                    })
+                    .bodyToMono(String.class)
+                    .log()
+                    ;
