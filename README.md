@@ -1,15 +1,80 @@
-아껴드림 제휴카드 및 상조 리스트 화면 개선
-- 자세히보기 QR 이미지 추가
-
-가치제안서 전용 상조 제휴상품 화면 및 링크 제작
-
-에러 로그 저장 기능 제작
-
-클릭 이벤트 통계 조회 개선 및 엑셀 다운로드 오류 수정  
-
-모빈스 피싱해킹보험 제휴상품 추가
-  - 데이터 수집 api 제작
-  - 보험 목록 조회 api, 화면, 엑셀 다운로드 기능 제작
-  - 이탈률 통계 집계 및 화면 제작
-
-모빈스 보험 화면 개선: 이탈률 단계 구체화
+with vw_tbl as (
+	SELECT upper(tbl.relname) AS tab_name
+	    ,concat(lower(split_part(tbl.relname, '_', 1))
+	           ,initcap(lower(split_part(tbl.relname, '_', 2)))
+	           ,initcap(lower(split_part(tbl.relname, '_', 3)))
+	           ,initcap(lower(split_part(tbl.relname, '_', 4)))
+	           ,initcap(lower(split_part(tbl.relname, '_', 5)))
+	           ,initcap(lower(split_part(tbl.relname, '_', 6)))) 			AS tab_camel
+	    ,concat(substring(lower(split_part(tbl.relname, '_', 1)), 1, 1)
+	           ,substring(lower(split_part(tbl.relname, '_', 2)), 1, 1)
+	           ,substring(lower(split_part(tbl.relname, '_', 3)), 1, 1)
+	           ,substring(lower(split_part(tbl.relname, '_', 4)), 1, 1)
+	           ,substring(lower(split_part(tbl.relname, '_', 5)), 1, 1)
+	           ,substring(lower(split_part(tbl.relname, '_', 6)), 1, 1)) 	AS tab_alias
+	    ,tab_desc.description 												AS tab_desc
+	    ,col.ordinal_position 												AS col_no
+	    ,upper(col.column_name) 											AS col_name
+	    ,concat(lower(split_part(col.column_name, '_', 1))
+	    	   ,initcap(lower(split_part(col.column_name, '_', 2)))
+	    	   ,initcap(lower(split_part(col.column_name, '_', 3)))
+	    	   ,initcap(lower(split_part(col.column_name, '_', 4)))
+	    	   ,initcap(lower(split_part(col.column_name, '_', 5)))
+	    	   ,initcap(lower(split_part(col.column_name, '_', 6)))) 		AS col_camel
+	    ,col_desc.description 												AS col_desc
+	    ,concat(replace(col.udt_name, 'bpchar', 'char')
+		       ,CASE
+		            WHEN col.character_maximum_length IS NOT NULL THEN ('(' || col.character_maximum_length) || ')'
+		            WHEN col.numeric_precision IS NOT NULL THEN ('(' || col.numeric_precision) ||
+		            CASE
+		                WHEN col.numeric_scale::integer = 0 THEN ')'
+		                ELSE (',' || col.numeric_scale) || ')'
+		            END
+		            ELSE NULL
+		        end
+		 ) 																	AS col_type
+	    ,CASE
+	         WHEN col.is_nullable = 'NO' THEN 'Not Null'
+	         ELSE ''
+	     END 																AS col_isnull
+	    ,CASE
+	         WHEN POSITION((':') IN (col.column_default)) > 0 THEN substr(col.column_default, 1, POSITION((':') IN (col.column_default)) - 1) 
+	         ELSE col.column_default 
+	     END 																AS col_default
+	    ,col_pk.ordinal_position 											AS col_pk
+	    ,replace(col.udt_name, 'bpchar', 'char')							as col_type1
+		,CASE
+	            WHEN col.character_maximum_length IS NOT NULL THEN ('' || col.character_maximum_length)
+	            WHEN col.numeric_precision IS NOT NULL THEN ('' || col.numeric_precision) ||
+		            CASE
+		                WHEN col.numeric_scale::integer = 0 THEN ''
+		                ELSE (',' || col.numeric_scale) || ''
+		            END
+	            ELSE NULL
+		 end																as col_len
+	   FROM pg_stat_user_tables tbl
+	     LEFT JOIN pg_description tab_desc ON tbl.relid = tab_desc.objoid AND tab_desc.objsubid = 0
+	     JOIN information_schema.columns col ON tbl.relname = col.table_name::name
+	     LEFT JOIN pg_description col_desc ON col_desc.objoid = tbl.relid AND col_desc.objsubid = col.ordinal_position::integer
+	     LEFT JOIN information_schema.key_column_usage col_pk ON (col_pk.constraint_name::name = (col.table_name || '_pkey') OR col_pk.constraint_name::name = (col.table_name || '_pk')) AND col_pk.column_name::name = col.column_name::name
+	  WHERE 1 = 1 
+--	  AND tbl.relname like 'rt_%' or tbl.relname = 'totalbldg_kt_jisa'
+	  AND tbl.relname like 'tb_%' or tbl.relname like 'tmp_%'
+)
+	select 'select '''||tab_name||''', count(*) from mespown.'||tab_name||' union all' from vw_tbl group by tab_name;
+select 
+    * 
+-- distinct lower(tab_name)
+--'COMMENT ON COLUMN '||tab_name||'.'||col_name||' IS '''||col_desc||''';'
+  from vw_tbl
+where 1=1 
+--	and tab_name like upper('%'||'rt_'||'%')		-- 테이블 이름
+--	and tab_name like upper('%'||'mdm_cpnt'||'%')		-- 테이블 이름
+--	and tab_desc like '%'||''||'%'						-- 테이블 Comment
+--	and col_name like upper('%'||'jisa'||'') 			-- 칼럼 이름
+--	and col_desc like '%'||'지사'||'%'					-- 칼럼 Comment
+--  and (col_type1 = 'date' or col_type1 = 'timestamp')	-- 칼럼 Type 
+--	and col_default != ''								-- 칼럼 Default
+--	and tab_name not like 'RT%'
+  order by tab_name, col_no
+;
