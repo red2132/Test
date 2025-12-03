@@ -1,161 +1,146 @@
 <template>
-  <div class="draggable-slider">
-    <button v-if="showArrows" class="arrow left" @click="scrollBy(-viewportWidth / 2)" :disabled="isAtStart">◀</button>
-
+  <div class="slider-wrapper">
     <div
-      class="viewport"
-      ref="viewport"
-      @mousedown="onDown"
-      @touchstart="onDown"
-      @mousemove="onMove"
-      @touchmove.prevent="onMove"
-      @mouseup="onUp"
-      @mouseleave="onLeave"
-      @touchend="onUp"
-      @wheel.passive="onWheel"
+      ref="track"
+      class="slider-track"
+      @mousedown="startDrag"
+      @touchstart.passive="startDrag"
+      @mousemove="onDrag"
+      @touchmove.passive="onDrag"
+      @mouseup="endDrag"
+      @mouseleave="endDrag"
+      @touchend="endDrag"
+      @touchcancel="endDrag"
     >
-      <div class="track" ref="track">
-        <!-- Users pass child items as slot content. Each child should have .slide-item (or style will work too) -->
-        <slot>
-          <!-- 예시 항목 (실제 사용시 slot으로 대체) -->
-          <div class="slide-item" v-for="n in 8" :key="n">Item {{ n }}</div>
-        </slot>
-      </div>
+      <!-- 슬롯으로 자식 요소 받기 -->
+      <slot>
+        <!-- 기본 예시 아이템들 (원하면 제거) -->
+        <div class="item" v-for="n in 10" :key="n">Item {{ n }}</div>
+      </slot>
     </div>
-
-    <button v-if="showArrows" class="arrow right" @click="scrollBy(viewportWidth / 2)" :disabled="isAtEnd">▶</button>
   </div>
 </template>
 
 <script>
 export default {
-  name: "DraggableSlider",
-  props: {
-    gap: { type: Number, default: 12 },
-    showArrows: { type: Boolean, default: true }
-  },
+  name: "HorizontalDragSlider",
   data() {
     return {
-      isDown: false,
+      isDragging: false,
       startX: 0,
-      scrollLeftStart: 0,
-      viewportWidth: 0,
-      isAtStart: true,
-      isAtEnd: false
+      startScrollLeft: 0,
+      lastTouchId: null,
     };
   },
+  methods: {
+    // 드래그 시작
+    startDrag(e) {
+      this.isDragging = true;
+      // 마우스 이벤트일 때
+      if (e.type === "mousedown") {
+        this.startX = e.pageX;
+      } else {
+        // touchstart: 사용된 터치의 identifier 를 기억
+        const t = e.touches ? e.touches[0] : e;
+        this.lastTouchId = t && t.identifier;
+        this.startX = t.pageX;
+      }
+      this.startScrollLeft = this.$refs.track.scrollLeft;
+      // 드래그 중 텍스트 선택 방지
+      document.body.classList.add("no-select");
+    },
+
+    // 드래그 중
+    onDrag(e) {
+      if (!this.isDragging) return;
+      let pageX;
+      if (e.type.startsWith("mouse")) {
+        pageX = e.pageX;
+      } else {
+        // touchmove: 같은 터치 찾기
+        const touches = e.touches;
+        if (!touches || touches.length === 0) return;
+        // 기본적으로 첫번째 터치 사용
+        pageX = touches[0].pageX;
+      }
+
+      const delta = pageX - this.startX;
+      // 반대방향으로 스크롤 (드래그 오른쪽 -> scrollLeft 감소)
+      this.$refs.track.scrollLeft = this.startScrollLeft - delta;
+    },
+
+    // 드래그 끝
+    endDrag() {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+      this.lastTouchId = null;
+      document.body.classList.remove("no-select");
+    },
+  },
   mounted() {
-    this.updateMeasurements();
-    window.addEventListener("resize", this.updateMeasurements);
-    // prevent image drag ghosting inside slider
-    this.$refs.viewport.addEventListener("dragstart", (e) => e.preventDefault());
-    this.checkEdge();
+    // 데스크탑에서 마우스 버튼을 떼는 이벤트를 전역으로도 잡아 안전하게 종료
+    window.addEventListener("mouseup", this.endDrag);
+    window.addEventListener("touchend", this.endDrag);
+    window.addEventListener("touchcancel", this.endDrag);
   },
   beforeDestroy() {
-    window.removeEventListener("resize", this.updateMeasurements);
+    window.removeEventListener("mouseup", this.endDrag);
+    window.removeEventListener("touchend", this.endDrag);
+    window.removeEventListener("touchcancel", this.endDrag);
   },
-  methods: {
-    updateMeasurements() {
-      this.viewportWidth = this.$refs.viewport.clientWidth;
-      this.checkEdge();
-    },
-    onDown(e) {
-      // support touch and mouse
-      this.isDown = true;
-      this.$refs.viewport.classList.add("dragging");
-      this.startX = (e.touches ? e.touches[0].pageX : e.pageX) - this.$refs.viewport.offsetLeft;
-      this.scrollLeftStart = this.$refs.viewport.scrollLeft;
-    },
-    onMove(e) {
-      if (!this.isDown) return;
-      const x = (e.touches ? e.touches[0].pageX : e.pageX) - this.$refs.viewport.offsetLeft;
-      const walk = (x - this.startX) * -1; // invert to match native scroll direction
-      this.$refs.viewport.scrollLeft = this.scrollLeftStart + walk;
-      this.checkEdge();
-    },
-    onUp() {
-      if (!this.isDown) return;
-      this.isDown = false;
-      this.$refs.viewport.classList.remove("dragging");
-      this.checkEdge();
-    },
-    onLeave() {
-      // when mouse leaves, stop dragging
-      if (this.isDown) this.onUp();
-    },
-    onWheel(e) {
-      // allow horizontal wheel (shift or trackpad) + vertical wheel convert
-      if (Math.abs(e.deltaX) > 0) {
-        // native horizontal
-        this.$refs.viewport.scrollLeft += e.deltaX;
-      } else {
-        // convert vertical wheel to horizontal
-        this.$refs.viewport.scrollLeft += e.deltaY;
-      }
-      this.checkEdge();
-    },
-    scrollBy(amount) {
-      // smooth scroll by px amount
-      this.$refs.viewport.scrollBy({ left: amount, behavior: "smooth" });
-      // after a short delay check edges (smooth scroll is async)
-      setTimeout(this.checkEdge, 250);
-    },
-    checkEdge() {
-      const vp = this.$refs.viewport;
-      if (!vp) return;
-      this.isAtStart = vp.scrollLeft <= 0;
-      // allow small epsilon due to fractional pixels
-      this.isAtEnd = Math.ceil(vp.scrollLeft + vp.clientWidth) >= vp.scrollWidth;
-    }
-  }
 };
 </script>
 
 <style scoped>
-.draggable-slider {
+.slider-wrapper {
+  width: 100%;
+  overflow: hidden; /* 가시 영역만 보이게 */
+}
+
+/* 트랙: 가로 한 줄로 정렬 */
+.slider-track {
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.viewport {
-  overflow: hidden; /* hide scrollbar */
-  flex: 1 1 auto;
+  gap: 12px;
+  padding: 12px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
   cursor: grab;
-  user-select: none;
-  -webkit-user-drag: none;
-  position: relative;
+  user-select: none; /* 기본 선택 방지 */
 }
-.viewport.dragging {
+
+/* 드래그 중 cursor 변경 */
+.slider-track:active {
   cursor: grabbing;
 }
-.track {
-  display: flex;
-  gap: var(--gap, 12px);
-  align-items: stretch;
-  padding: 6px 0;
-  /* allow children to be shrink-to-fit horizontally */
+
+/* 스크롤바 숨기기 (크로스브라우저) */
+.slider-track::-webkit-scrollbar {
+  display: none;
 }
-.slide-item {
-  flex: 0 0 auto; /* do not grow or shrink, keep intrinsic width */
-  min-width: 160px; /* example width, can be overridden by slot children */
-  padding: 12px;
+.slider-track {
+  -ms-overflow-style: none; /* IE, Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* 기본 아이템 스타일 (예시) */
+.item {
+  min-width: 160px;
+  height: 100px;
+  background: #f3f4f6;
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0; /* 축소 방지 */
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  background: #fff;
-  text-align: center;
 }
-.arrow {
-  background: none;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 6px 10px;
-  cursor: pointer;
+
+/* 문서 전체에서 드래그 시 텍스트 선택 금지 클래스 */
+.no-select {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
 }
-.arrow:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-/* hide native scrollbar but still allow interaction */
-.viewport::-webkit-scrollbar { height: 8px; }
-.viewport::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 8px; }
 </style>
