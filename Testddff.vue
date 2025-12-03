@@ -30,38 +30,43 @@ export default {
       dragging: false,
       dragStartX: 0,
       dragDeltaX: 0,
-      viewportWidth: 0
+      slideWidths: [],
+      totalWidth: 0
     };
   },
   computed: {
     slidesStyle() {
-      const translate = -this.currentIndex * 100;
-      const dragPx = this.dragging ? this.dragDeltaX : 0;
+      // 현재 index까지의 width 합으로 translate 계산
+      const baseOffset = this.slideWidths
+        .slice(0, this.currentIndex)
+        .reduce((a, b) => a + b, 0);
+
+      const dragOffset = this.dragDeltaX;
 
       return {
-        transform: `translate3d(calc(${translate}% + ${dragPx}px), 0, 0)`,
+        transform: `translate3d(${-(baseOffset - dragOffset)}px, 0, 0)`,
         transition: this.dragging ? "none" : "transform 300ms ease"
       };
     }
   },
   mounted() {
-    this.updateSlidesCount();
-    this.updateViewportWidth();
-    window.addEventListener("resize", this.updateViewportWidth);
+    this.$nextTick(() => {
+      this.measureSlides();
+    });
+    window.addEventListener("resize", this.measureSlides);
   },
   beforeDestroy() {
-    window.removeEventListener("resize", this.updateViewportWidth);
+    window.removeEventListener("resize", this.measureSlides);
   },
   methods: {
-    updateSlidesCount() {
-      const slot = this.$slots.default ? this.$slots.default() : [];
-      this.slidesCount = slot.length || 0;
-    },
-    updateViewportWidth() {
-      this.viewportWidth = this.$refs.viewport?.clientWidth || 0;
+    measureSlides() {
+      const slides = this.$refs.slides?.children || [];
+      this.slideWidths = Array.from(slides).map(el => el.clientWidth);
+      this.slidesCount = this.slideWidths.length;
+      this.totalWidth = this.slideWidths.reduce((a, b) => a + b, 0);
     },
 
-    // ------- 드래그 / 터치 -------
+    // ------- DRAG -------
     onDragStart(e) {
       this.dragging = true;
       this.dragStartX = e.clientX;
@@ -74,7 +79,7 @@ export default {
     onDragEnd() {
       if (!this.dragging) return;
 
-      const threshold = Math.min(80, this.viewportWidth * 0.15);
+      const threshold = 60;
 
       if (this.dragDeltaX > threshold && this.currentIndex > 0) {
         this.currentIndex--;
@@ -86,7 +91,7 @@ export default {
       this.dragDeltaX = 0;
     },
 
-    // 터치
+    // ------- TOUCH -------
     onTouchStart(e) {
       const t = e.touches[0];
       this.dragging = true;
@@ -104,20 +109,14 @@ export default {
 
 <style scoped>
 .carousel {
-  position: relative;
-  width: 100%;
   overflow: hidden;
+  width: 100%;
 }
 
 .slides {
   display: flex;
-  width: 100%;
   will-change: transform;
 }
 
-/* 슬롯으로 들어온 자식들을 100% 폭으로 설정 */
-.slides ::v-deep > * {
-  flex: 0 0 100%;
-  width: 100%;
-}
+/* slot 요소는 크기 강제하지 않음 */
 </style>
